@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         ChatGPT DeMod
+// @name         ChatGPT DeMod Test
 // @namespace    pl.4as.chatgpt
-// @version      4.7
+// @version      4.8_test
 // @description  Hides moderation results during conversations with ChatGPT
 // @author       4as
 // @match        *://chatgpt.com/*
@@ -25,18 +25,18 @@ var demod_init = async function() {
 
         const DEMOD_KEY = 'DeModState';
         var is_on = false;
-        var is_over = false;
+        var is_visible = false;
 
-        // Adding the "hover" area for the DeMod button.
+        // Adding the DeMod panel.
         const demod_div = document.createElement('div');
         demod_div.setAttribute('id', DEMOD_ID);
         demod_div.style.position = 'fixed';
-        demod_div.style.top = '0px';
+        demod_div.style.top = '50px';
         demod_div.style.left = '50%';
         demod_div.style.transform = 'translate(-50%, 0%)';
         demod_div.style.width = '254px';
         demod_div.style.height = '24px';
-        demod_div.style.display = 'inline-block';
+        demod_div.style.display = 'none';
         demod_div.style.verticalAlign = 'top';
         demod_div.style.zIndex = 999;
 
@@ -78,20 +78,64 @@ var demod_init = async function() {
 
         demod_div.appendChild(demod_status);
 
-        demod_div.onmouseover = function() {
-            is_over = true;
-            demod_status.style.fontSize = '10px';
-            demod_status.style.height = '32px';
-            demod_status.style.padding = '7px 3px';
-            updateDeModState();
-        };
-        demod_div.onmouseout = function() {
-            is_over = false;
-            demod_status.style.fontSize = '0px';
-            demod_status.style.height = '6px';
-            demod_status.style.padding = '0px';
-            updateDeModState();
-        };
+        // Function to create a new DeMod toggle button
+        function createDemodToggleButton() {
+            const demod_toggle_button = document.createElement('button');
+            demod_toggle_button.classList.add('demod-toggle-button');
+            demod_toggle_button.type = 'button';
+            demod_toggle_button.textContent = 'DeMod';
+
+            demod_toggle_button.addEventListener('click', (event) => {
+                is_visible = !is_visible;
+                demod_div.style.display = is_visible ? 'block' : 'none';
+                event.stopPropagation(); // Prevent the event from bubbling up to the document
+            });
+
+            return demod_toggle_button;
+        }
+
+        // Array of container selectors where the button should be added
+        const containers = [
+            {
+                containerSelector: '.draggable.no-draggable-children.sticky.top-0',
+                referenceButtonSelector: 'button[id^="radix-:r"]'
+            },
+            {
+                containerSelector: '.draggable.sticky.top-0', // Replace with your actual container selector
+                referenceButtonSelector: 'button[data-testid="open-sidebar-button"]'
+            }
+        ];
+
+        // Set to keep track of containers where the button has been added
+        const addedContainers = new Set();
+
+        // Wait for the containers to load before appending the buttons
+        const containerInterval = setInterval(() => {
+            containers.forEach(({ containerSelector, referenceButtonSelector }) => {
+                const targetContainer = document.querySelector(containerSelector);
+                if (targetContainer && !addedContainers.has(targetContainer)) {
+                    const referenceButton = targetContainer.querySelector(referenceButtonSelector);
+                    if (referenceButton) {
+                        const demod_toggle_button = createDemodToggleButton();
+                        referenceButton.insertAdjacentElement('afterend', demod_toggle_button);
+                        addedContainers.add(targetContainer);
+                    }
+                }
+            });
+
+            // Clear the interval if buttons have been added to all containers
+            if (addedContainers.size === containers.length) {
+                clearInterval(containerInterval);
+            }
+        }, 100);
+
+        // Adjust the document click listener
+        document.addEventListener('click', (event) => {
+            if (!event.target.classList.contains('demod-toggle-button') && !demod_div.contains(event.target)) {
+                is_visible = false;
+                demod_div.style.display = 'none';
+            }
+        });
 
         demod_button.addEventListener('click', () => {
             is_on = !is_on;
@@ -147,7 +191,7 @@ var demod_init = async function() {
         }
 
         function updateButton(button, state, label) {
-            if( is_over ) {
+            if( is_visible ) {
                 button.style.height = 'auto';
                 button.style.border = '0px';
                 button.style.padding = '4px 12px';
@@ -196,18 +240,18 @@ var demod_init = async function() {
         updateDeModState();
 
         function hasFlagged(text) {
-            return text.match(/(\"blocked\"|\"flagged\"): ?true/ig);
+            return text.match(/("blocked"|"flagged"): ?true/ig);
         }
         function hasBlocked(text) {
-            return text.match(/(\"blocked\"): ?true/ig);
+            return text.match(/("blocked"): ?true/ig);
         }
 
         function clearFlagging(text) {
-            // repeated replacement to ensure the style stays consistant
-            text = text.replaceAll(/\"flagged\": true/ig, "\"flagged\": false");
-            text = text.replaceAll(/\"blocked\": true/ig, "\"blocked\": false");
-            text = text.replaceAll(/\"flagged\":true/ig, "\"flagged\":false");
-            text = text.replaceAll(/\"blocked\":true/ig, "\"blocked\":false");
+            // repeated replacement to ensure the style stays consistent
+            text = text.replaceAll(/"flagged": true/ig, "\"flagged\": false");
+            text = text.replaceAll(/"blocked": true/ig, "\"blocked\": false");
+            text = text.replaceAll(/"flagged":true/ig, "\"flagged\":false");
+            text = text.replaceAll(/"blocked":true/ig, "\"blocked\":false");
             return text;
         }
 
@@ -216,8 +260,6 @@ var demod_init = async function() {
             INIT : 1,
             PROMPT : 2,
         };
-
-        
 
         // DeMod state control
         function getDeModState() {
@@ -230,7 +272,6 @@ var demod_init = async function() {
             target_window.localStorage.setItem(DEMOD_KEY, demod_on);
         }
 
-
         // Interceptors shared data
         const DONE = "[DONE]";
         var init_cache = null;
@@ -239,7 +280,7 @@ var demod_init = async function() {
         var payload = null;
         var last_response = null;
         var mod_result = ModerationResult.UNKNOWN;
-        var sequence_shift = 0; //each sequence in the generated response has an id and all ids need to match, so DeMod shifts them to insert own messages if needed.
+        var sequence_shift = 0; // Each sequence in the generated response has an id and all ids need to match, so DeMod shifts them to insert own messages if needed.
 
         var decoder = new TextDecoder();
         var encoder = new TextEncoder();
@@ -296,7 +337,7 @@ var demod_init = async function() {
                         if( map_obj.hasOwnProperty('message') && map_obj.message != null
                            && map_obj.message.hasOwnProperty('create_time') && map_obj.message.create_time > latest_time ) {
                             latest = map_obj.message;
-                            latest_time = latest.create_time;
+                            latest_time = map_obj.message.create_time;
                         }
                     }
                 }
@@ -306,21 +347,16 @@ var demod_init = async function() {
         }
 
         class ChatResponse {
-            chunk;
-            chunk_start;
-            payload;
-            conversation_id;
-            is_done = false;
-            is_blocked = false;
-            has_content = false;
-            handle_latest = false;
-            mod_result = ModerationResult.SAFE;
-            queue = [];
             constructor(existing_payload, decoded_chunk, download_latest) {
                 this.payload = existing_payload;
                 this.chunk = decoded_chunk;
                 this.chunk_start = this.chunk.indexOf("data: ");
                 this.handle_latest = download_latest;
+                this.is_done = false;
+                this.is_blocked = false;
+                this.has_content = false;
+                this.mod_result = ModerationResult.SAFE;
+                this.queue = [];
             }
             async process(current_blocked) {
                 this.is_blocked = current_blocked;
@@ -417,23 +453,19 @@ var demod_init = async function() {
                 }
                 else {
                     this.payload.message.content.parts[0] = "DeMod: Request completed, but DeMod failed to access the history. Try refreshing the conversation instead.";
-                    return "data: "+JSON.stringify(this.payload)+"\n\n"
+                    return "data: "+JSON.stringify(this.payload)+"\n\n";
                 }
             }
         }
 
         class ChatEvent {
-            event;
-            response_data;
-            response_object;
-            response_body;
-            response = null;
-            sequence_id;
             constructor(current_payload, event) {
                 this.event = event;
                 this.response_data = decodeData(event.data);
                 this.response_object = JSON.parse(this.response_data);
                 this.sequence_id = this.response_object.sequenceId;
+                this.response = null;
+
                 if( this.has_body ) {
                     this.response_body = atob(this.response_object.data.body);
                     this.response = new ChatResponse(current_payload, this.response_body, false);
@@ -484,7 +516,7 @@ var demod_init = async function() {
             }
         }
 
-        // Intercepter for old fetch() based communication
+        // Interceptor for old fetch() based communication
         target_window.fetch = async function(...arg) {
             if( !is_on ) {
                 return original_fetch(...arg);
@@ -630,7 +662,7 @@ var demod_init = async function() {
             return original_promise;
         }
 
-        // Interceptor for new WebSocket communication (credit to WebSocket Logger for making this possible)
+        // Interceptor for new WebSocket communication
         var original_websocket = target_window.WebSocket;
         target_window.WebSocket = new Proxy(original_websocket, {
             construct: function (target, args, newTarget) {
